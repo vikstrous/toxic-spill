@@ -76,13 +76,13 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type Conn struct {
-	src_ip string
+	src_ip   string
 	src_port string
-	dst_ip string
+	dst_ip   string
 	dst_port string
 }
 type ConnCache struct {
-	conn Conn
+	conn      Conn
 	last_seen time.Time
 }
 
@@ -98,14 +98,14 @@ func getActiveConns() []Conn {
 	re := regexp.MustCompile("(\\d+(\\.\\d+){3}):(\\d+)")
 	conns := strings.Split(fmt.Sprintf("%s", iftop_out), "\n--------------------------------------------------------------------------------------------\n")[1]
 	// when there are no entries there are two lines of --------- one after another
-	if (conns[0] == '-') {
+	if conns[0] == '-' {
 		return nil
 	}
 	conns_arr := strings.Split(conns, "\n")
 	for i := 0; i < len(conns_arr); i += 2 {
 		ip_port_dst := re.FindStringSubmatch(conns_arr[i])
 		ip_port_src := re.FindStringSubmatch(conns_arr[i+1])
-		conn := Conn {ip_port_src[1], ip_port_src[3], ip_port_dst[1], ip_port_dst[3]}
+		conn := Conn{ip_port_src[1], ip_port_src[3], ip_port_dst[1], ip_port_dst[3]}
 		//log.Printf("%s connecting to %s on port %s", conn.src_ip, conn.dst_ip, conn.dst_port)
 		results = append(results, conn)
 	}
@@ -127,26 +127,26 @@ func connStateTracker(c chan Conn, query chan bool, reply chan []Conn) {
 	conns := []ConnCache{}
 	for {
 		select {
-			case conn := <-c:
-				log.Println("state")
-				log.Println(conn)
-				conns = append(conns, ConnCache{conn, time.Now()})
-			case <-query:
-				// expire old entries
-				new_list := []ConnCache{}
-				for _, c := range conns {
-					if c.last_seen.Before(time.Now().Add(-30 * time.Second)) {
-						new_list = append(new_list, c)
-					}
+		case conn := <-c:
+			log.Println("state")
+			log.Println(conn)
+			conns = append(conns, ConnCache{conn, time.Now()})
+		case <-query:
+			// expire old entries
+			new_list := []ConnCache{}
+			for _, c := range conns {
+				if c.last_seen.Before(time.Now().Add(-30 * time.Second)) {
+					new_list = append(new_list, c)
 				}
-				conns = new_list
+			}
+			conns = new_list
 
-				// return new entries left
-				ret := make([]Conn, len(conns))
-				for i, c := range conns {
-					ret[i] = c.conn
-				}
-				reply <- ret
+			// return new entries left
+			ret := make([]Conn, len(conns))
+			for i, c := range conns {
+				ret[i] = c.conn
+			}
+			reply <- ret
 		}
 	}
 }
