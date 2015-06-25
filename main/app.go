@@ -31,9 +31,9 @@ func main() {
 	fmt.Printf("existing proxies: %v\n", proxies)
 
 	fs := http.FileServer(http.Dir("assets"))
-	http.Handle("/assets", fs)
 
 	r := mux.NewRouter()
+	r.PathPrefix("/").Handler(fs)
 	r.HandleFunc("/proxy", addProxyHandler).Methods("GET")
 
 	log.Println("Listening on 3000...")
