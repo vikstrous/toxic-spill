@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"time"
 
 	toxiproxy "github.com/Shopify/toxiproxy/client"
 	"github.com/donhcd/dockerclient"
@@ -74,29 +75,80 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func getActiveConns() [][]string {
+type Conn struct {
+	src_ip string
+	src_port string
+	dst_ip string
+	dst_port string
+}
+type ConnCache struct {
+	conn Conn
+	last_seen time.Time
+}
+
+func getActiveConns() []Conn {
 	iftop_out, err := exec.Command("iftop", "-n", "-i", "docker0", "-P", "-N", "-t", "-s", "1").Output()
 	if err != nil {
 		log.Printf("Failed to execute iftop")
 		return nil
 	}
 
-	results := [][]string{}
+	results := []Conn{}
 
 	re := regexp.MustCompile("(\\d+(\\.\\d+){3}):(\\d+)")
 	conns := strings.Split(fmt.Sprintf("%s", iftop_out), "\n--------------------------------------------------------------------------------------------\n")[1]
+	// when there are no entries there are two lines of --------- one after another
+	if (conns[0] == '-') {
+		return nil
+	}
 	conns_arr := strings.Split(conns, "\n")
 	for i := 0; i < len(conns_arr); i += 2 {
 		ip_port_dst := re.FindStringSubmatch(conns_arr[i])
-		ip_dst := ip_port_dst[1]
-		port_dst := ip_port_dst[3]
 		ip_port_src := re.FindStringSubmatch(conns_arr[i+1])
-		ip_src := ip_port_src[1]
-		//port_src := ip_port_src[3]
-		//log.Printf("%s connecting to %s on port %s", ip_src, ip_dst, port_dst)
-		results = append(results, []string{ip_src, ip_dst, port_dst})
+		conn := Conn {ip_port_src[1], ip_port_src[3], ip_port_dst[1], ip_port_dst[3]}
+		//log.Printf("%s connecting to %s on port %s", conn.src_ip, conn.dst_ip, conn.dst_port)
+		results = append(results, conn)
 	}
 	return results
+}
+
+func connPoller(c chan Conn) {
+	for {
+		conns := getActiveConns()
+		log.Println("poller")
+		log.Println(conns)
+		for _, conn := range conns {
+			c <- conn
+		}
+	}
+}
+
+func connStateTracker(c chan Conn, query chan bool, reply chan []Conn) {
+	conns := []ConnCache{}
+	for {
+		select {
+			case conn := <-c:
+				log.Println("state")
+				log.Println(conn)
+				conns = append(conns, ConnCache{conn, time.Now()})
+			case <-query:
+				// expire old entries
+				new_list := []ConnCache{}
+				for _, c := range conns {
+					if c.last_seen.Before(time.Now().Add(-30 * time.Second)) {
+						new_list = append(new_list, c)
+					}
+				}
+				conns = new_list
+
+				// return new entries left
+				ret := make([]Conn, len(conns))
+				for i, c := range conns {
+					ret[i] = c.conn
+				}
+				reply <- ret
+		}
+	}
 }
 
 func main() {
@@ -120,7 +172,20 @@ func main() {
 	r.HandleFunc("/proxy", addProxyHandler).Methods("POST")
 	r.PathPrefix("/").Handler(fs)
 
-	log.Println(getActiveConns())
+	// set up the channels for the gorouties
+	recordConn := make(chan Conn)
+	queryConns := make(chan bool)
+	queryConnsReply := make(chan []Conn)
+
+	// start the poller and the state tracker
+	go connPoller(recordConn)
+	go connStateTracker(recordConn, queryConns, queryConnsReply)
+
+	// example query to the state tracker
+	//queryConns <- true
+	//reply := <-queryConnsReply
+	//log.Println("webserver")
+	//log.Println(reply)
 
 	log.Println("Listening on 3000...")
 	http.ListenAndServe(":3000", r)
