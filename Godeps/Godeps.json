@@ -6,6 +6,35 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/Shopify/toxiproxy/client",
+			"Comment": "v1.1.0-17-gacc06ab",
+			"Rev": "acc06abdf87a1654e8fcbc820284fb220c5a486c"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/jsonmessage",
+			"Comment": "v1.4.1-4037-gb6049b5",
+			"Rev": "b6049b5c4963bb1b82ba381cdce69d1083bcf59e"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/term",
+			"Comment": "v1.4.1-4037-gb6049b5",
+			"Rev": "b6049b5c4963bb1b82ba381cdce69d1083bcf59e"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/timeutils",
+			"Comment": "v1.4.1-4037-gb6049b5",
+			"Rev": "b6049b5c4963bb1b82ba381cdce69d1083bcf59e"
+		},
+		{
+			"ImportPath": "github.com/docker/docker/pkg/units",
+			"Comment": "v1.4.1-4037-gb6049b5",
+			"Rev": "b6049b5c4963bb1b82ba381cdce69d1083bcf59e"
+		},
+		{
+			"ImportPath": "github.com/donhcd/dockerclient",
+			"Rev": "aecdf29b7d36e147942279cb66aea0dbac8da3db"
+		},
+		{
 			"ImportPath": "github.com/gorilla/context",
 			"Rev": "50c25fb3b2b3b3cc724e9b6ac75fb44b3bccd0da"
 		},
