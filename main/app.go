@@ -17,9 +17,18 @@ import (
 )
 
 var tp *toxiproxy.Client
-var tpIp string
+var tpIP string
 var dc dockerclient.Client
 var firstAvailablePort uint64 = 9000
+var containerProxies = map[string][]toxiproxy.Proxy{
+	"backstabbing_sinoussi": {
+		{
+			Name:     "derp",
+			Upstream: "google.com:80",
+		},
+	},
+	"gloomy_pasteur": nil,
+}
 
 func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
@@ -47,7 +56,7 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	tpProxy := tp.NewProxy(&toxiproxy.Proxy{
 		Name:     fmt.Sprintf("%s_%s_%d", arg.Container, arg.IPAddress, arg.Port),
-		Listen:   fmt.Sprintf("%s:%d", tpIp, newTpPort),
+		Listen:   fmt.Sprintf("%s:%d", tpIP, newTpPort),
 		Upstream: fmt.Sprintf("%s:%d", arg.IPAddress, arg.Port),
 		Enabled:  true,
 	})
@@ -57,7 +66,7 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	iptablesCmdString := fmt.Sprintf("iptables -t nat -I PREROUTING 1 -s %s -p tcp -d %s --dport %d -j DNAT --to-destination %s:%d", containerIP, arg.IPAddress, arg.Port, tpIp, newTpPort)
+	iptablesCmdString := fmt.Sprintf("iptables -t nat -I PREROUTING 1 -s %s -p tcp -d %s --dport %d -j DNAT --to-destination %s:%d", containerIP, arg.IPAddress, arg.Port, tpIP, newTpPort)
 	iptablesCmdSlice := strings.Split(iptablesCmdString, " ")
 	iptablesCmd := exec.Command(iptablesCmdSlice[0], iptablesCmdSlice[1:]...)
 	iptablesCmd.Stdout = os.Stdout
@@ -84,6 +93,11 @@ type Conn struct {
 type ConnCache struct {
 	conn      Conn
 	last_seen time.Time
+}
+
+func getProxiesHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(containerProxies)
 }
 
 func getActiveConns() []Conn {
@@ -157,8 +171,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to init dockerclient: %v", err)
 	}
-	tpIp = getTpHost(dc)
-	tp = toxiproxy.NewClient("http://" + tpIp + ":8474")
+	tpIP = getTpHost(dc)
+	tp = toxiproxy.NewClient("http://" + tpIP + ":8474")
 
 	proxies, err := tp.Proxies()
 	if err != nil {
@@ -166,10 +180,11 @@ func main() {
 	}
 	fmt.Printf("existing proxies: %v\n", proxies)
 
-	fs := http.FileServer(http.Dir("assets"))
+	fs := FileServer(http.Dir("assets"))
 
 	r := mux.NewRouter()
-	r.HandleFunc("/proxy", addProxyHandler).Methods("POST")
+	r.HandleFunc("/api/proxy", addProxyHandler).Methods("POST")
+	r.HandleFunc("/api/proxies", getProxiesHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
 
 	// set up the channels for the gorouties
