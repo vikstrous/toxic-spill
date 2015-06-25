@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	toxiproxy "github.com/Shopify/toxiproxy/client"
 	"github.com/donhcd/dockerclient"
@@ -21,7 +22,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to init dockerclient: %v", err)
 	}
-	tp = toxiproxy.NewClient(getTpServer(dc) + ":8474")
+	tp = toxiproxy.NewClient("http://" + getTpHost(dc) + ":8474")
+
+	proxies, err := tp.Proxies()
+	if err != nil {
+		log.Fatalf("Failed to list toxiproxy proxies: %v", err)
+	}
+	fmt.Printf("existing proxies: %v\n", proxies)
+
 	fs := http.FileServer(http.Dir("assets"))
 	http.Handle("/assets", fs)
 
@@ -32,14 +40,18 @@ func main() {
 	http.ListenAndServe(":3000", r)
 }
 
-func getTpServer(dc dockerclient.Client) string {
+func getTpHost(dc dockerclient.Client) string {
 	containers, err := dc.ListContainers(false, false, "")
 	if err != nil {
 		log.Fatalf("Failed to get docker containers list: %v", err)
 	}
 	for _, container := range containers {
-		if container.Image == "shopify/toxiproxy:latest" {
-			return container.Id
+		if strings.HasPrefix(container.Image, "shopify/toxiproxy") {
+			if containerInfo, err := dc.InspectContainer(container.Id); err != nil {
+				log.Fatalf("Failed to inspect container %s: %v", container.Id, err)
+			} else {
+				return containerInfo.NetworkSettings.IPAddress
+			}
 		}
 	}
 	log.Fatal("couldn't find a running toxiproxy")
