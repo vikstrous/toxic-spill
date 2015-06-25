@@ -28,7 +28,7 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/proxy", addProxyHandler).Methods("GET")
 
-	log.Println("Listening...")
+	log.Println("Listening on 3000...")
 	http.ListenAndServe(":3000", r)
 }
 
