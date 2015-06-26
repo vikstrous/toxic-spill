@@ -215,7 +215,7 @@ func main() {
 	}
 
 	r := mux.NewRouter()
-	r.HandleFunc("/api/proxy", s.addProxyHandler).Methods("POST")
+	r.HandleFunc("/api/proxies", s.addProxyHandler).Methods("POST")
 	r.HandleFunc("/api/proxies", s.getProxiesHandler).Methods("GET")
 	r.HandleFunc("/api/conns", s.getConnsHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
