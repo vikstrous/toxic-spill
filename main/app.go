@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -169,6 +170,24 @@ func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(reply)
 }
 
+type containerProxyInfo struct {
+	Name    string             `json:"name"`
+	Proxies []*toxiproxy.Proxy `json:"proxies"`
+}
+type containerProxyInfos []containerProxyInfo
+
+func (cpi containerProxyInfos) Len() int {
+	return len(cpi)
+}
+
+func (cpi containerProxyInfos) Less(i, j int) bool {
+	return cpi[i].Name < cpi[j].Name
+}
+
+func (cpi containerProxyInfos) Swap(i, j int) {
+	cpi[i], cpi[j] = cpi[j], cpi[i]
+}
+
 func (s *Server) getProxiesHandler(w http.ResponseWriter, r *http.Request) {
 	containerProxyMap := make(map[string][]*toxiproxy.Proxy)
 
@@ -187,17 +206,14 @@ func (s *Server) getProxiesHandler(w http.ResponseWriter, r *http.Request) {
 		containerProxyMap[containerName] = append(containerProxyMap[containerName], proxy)
 	}
 
-	type containerProxyInfo struct {
-		Name    string             `json:"name"`
-		Proxies []*toxiproxy.Proxy `json:"proxies"`
-	}
-	var containerProxies []containerProxyInfo
+	var containerProxies containerProxyInfos
 	for containerName, proxies := range containerProxyMap {
 		containerProxies = append(containerProxies, containerProxyInfo{
 			Name:    containerName,
 			Proxies: proxies,
 		})
 	}
+	sort.Sort(containerProxies)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(containerProxies)
