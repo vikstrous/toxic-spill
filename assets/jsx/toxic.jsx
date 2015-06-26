@@ -1,5 +1,7 @@
 var Input = ReactBootstrap.Input;
 var Table = ReactBootstrap.Table;
+var ListGroup = ReactBootstrap.ListGroup;
+var ListGroupItem = ReactBootstrap.ListGroupItem;
 var Panel = ReactBootstrap.Panel;
 var Button = ReactBootstrap.Button;
 
@@ -43,17 +45,17 @@ var ContainerControl = React.createClass({
     var rows = [];
     var proxies = this.props.container.proxies || [];
     for (var i=0; i < proxies.length; i++) {
-      rows.push(<ProxyRow container={this.props.container} rule={proxies[i]} reload={this.props.reload} />);
+      rows.push(<ProxyRow key={proxies[i].name} container={this.props.container} rule={proxies[i]} reload={this.props.reload} />);
     }
-    rows.push(<ProxyRow container={this.props.container} reload={this.props.reload} />);
+    rows.push(<ProxyRow key="_" container={this.props.container} reload={this.props.reload} />);
     return (
       <Panel collapsible defaultExpanded header={this.props.container.name}>
-        <Table striped bordered condensed hover>
+        <Table fill striped bordered condensed hover>
           <thead>
             <tr>
-              <th width="25%">Listener</th>
-              <th width="30%">Upstream Latency</th>
-              <th width="30%">Downstream Latency</th>
+              <th width="25%">Address</th>
+              <th width="30%">Upstream Toxics</th>
+              <th width="30%">Downstream Toxics</th>
               <th width="15%">Actions</th>
             </tr>
           </thead>
@@ -85,23 +87,13 @@ var ProxyRow = React.createClass({
     }
     return state;
   },
-  handleUpstreamChange: function(event) {
-    this.setState({
-      modified: true,
-      upstream: event.target.value
-    });
-  },
-  handleUpstreamLatencyChange: function(event) {
-    this.setState({
-      modified: true,
-      upstreamLatency: event.target.value
-    });
-  },
-  handleDownstreamLatencyChange: function(event) {
-    this.setState({
-      modified: true,
-      downstreamLatency: event.target.value
-    });
+  propertyUpdateHandler: function(property) {
+    var self = this;
+    return function(event) {
+      var state = {modified: true};
+      state[property] = event.target.value;
+      self.setState(state);
+    };
   },
   handleAdd: function() {
     var self = this;
@@ -109,7 +101,7 @@ var ProxyRow = React.createClass({
     addProxy(this.props.container.name, this.state.upstream, function(proxy) {
       addToxic(proxy.name, "latency", true, {enabled: true, latency: parseInt(self.state.upstreamLatency), jitter: 5});
       addToxic(proxy.name, "latency", false, {enabled: true, latency: parseInt(self.state.downstreamLatency), jitter: 5});
-      self.setState({adding: false});
+      self.replaceState(self.getInitialState());
       self.props.reload();
     });
   },
@@ -132,7 +124,7 @@ var ProxyRow = React.createClass({
   },
   render: function() {
     var submitting = this.state.updating || this.state.removing || this.state.adding;
-    var buttons = this.props.rule ? [
+    var buttons = this.props.rule ?
       // <Button
       //   bsStyle="warning"
       //   disabled={submitting}
@@ -145,7 +137,7 @@ var ProxyRow = React.createClass({
         onClick={!submitting ? this.handleRemove : null}>
         {!this.state.removing ? "Remove" : "Removing..."}
       </Button>
-      ] :
+       :
       <Button
         bsStyle="success"
         disabled={this.state.adding}
@@ -154,9 +146,13 @@ var ProxyRow = React.createClass({
       </Button>;
     return (
       <tr>
-        <td><Input type="text" value={this.state.upstream} onChange={this.handleUpstreamChange} /></td>
-        <td><Input type="text" value={this.state.upstreamLatency} onChange={this.handleUpstreamLatencyChange} /></td>
-        <td><Input type="text" value={this.state.downstreamLatency} onChange={this.handleDownstreamLatencyChange} /></td>
+        <td><Input type="text" value={this.state.upstream} onChange={this.propertyUpdateHandler("upstream")} /></td>
+        <td><ListGroup fill>
+            <ListGroupItem><Input type="text" label="Latency" value={this.state.upstreamLatency} onChange={this.propertyUpdateHandler("upstreamLatency")} /></ListGroupItem>
+        </ListGroup></td>
+        <td><ListGroup fill>
+            <ListGroupItem><Input type="text" label="Latency" value={this.state.downstreamLatency} onChange={this.propertyUpdateHandler("downstreamLatency")} /></ListGroupItem>
+        </ListGroup></td>
         <td>
           {buttons}
         </td>
@@ -168,6 +164,10 @@ var ProxyRow = React.createClass({
 var controls = <ToxicControls />;
 
 function addProxy(containerName, upstream, callback) {
+  if (!upstream) {
+    callback();
+    return;
+  }
   var upstreamParts = upstream.split(":");
   var ip = upstreamParts[0];
   var port = upstreamParts[1];

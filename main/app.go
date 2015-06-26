@@ -127,8 +127,14 @@ func (s *Server) createToxicHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	} else {
 		if arg.Upstream {
+			if proxy.ToxicsUpstream == nil {
+				proxy.ToxicsUpstream = make(toxiproxy.Toxics)
+			}
 			proxy.ToxicsUpstream[arg.ToxicName] = toxic
 		} else {
+			if proxy.ToxicsDownstream == nil {
+				proxy.ToxicsDownstream = make(toxiproxy.Toxics)
+			}
 			proxy.ToxicsDownstream[arg.ToxicName] = toxic
 		}
 	}
