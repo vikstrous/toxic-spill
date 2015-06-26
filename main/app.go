@@ -96,14 +96,27 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type Conn struct {
-	src_ip   string
-	src_port string
-	dst_ip   string
-	dst_port string
+	SrcIp   string
+	SrcPort string
+	DstIp   string
+	DstPort string
 }
 type ConnCache struct {
 	conn      Conn
 	last_seen time.Time
+}
+
+type Server struct {
+	queryConns chan bool
+	queryConnsReply chan []Conn
+}
+
+func (s *Server) connsHandler(w http.ResponseWriter, r *http.Request) {
+	s.queryConns <- true
+	reply := <-s.queryConnsReply
+	//log.Println("webserver")
+	//log.Println(reply)
+	json.NewEncoder(w).Encode(reply)
 }
 
 func getProxiesHandler(w http.ResponseWriter, r *http.Request) {
@@ -160,7 +173,7 @@ func connStateTracker(c chan Conn, query chan bool, reply chan []Conn) {
 			// expire old entries
 			new_list := []ConnCache{}
 			for _, c := range conns {
-				if c.last_seen.Before(time.Now().Add(-30 * time.Second)) {
+				if !c.last_seen.Before(time.Now().Add(-30 * time.Second)) {
 					new_list = append(new_list, c)
 				}
 			}
@@ -193,25 +206,20 @@ func main() {
 
 	fs := FileServer(http.Dir("assets"))
 
+	s := Server{make(chan bool), make(chan []Conn)}
+
 	r := mux.NewRouter()
 	r.HandleFunc("/api/proxy", addProxyHandler).Methods("POST")
 	r.HandleFunc("/api/proxies", getProxiesHandler).Methods("GET")
+	r.HandleFunc("/api/conns", s.connsHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
 
 	// set up the channels for the gorouties
 	recordConn := make(chan Conn)
-	queryConns := make(chan bool)
-	queryConnsReply := make(chan []Conn)
 
 	// start the poller and the state tracker
 	go connPoller(recordConn)
-	go connStateTracker(recordConn, queryConns, queryConnsReply)
-
-	// example query to the state tracker
-	//queryConns <- true
-	//reply := <-queryConnsReply
-	//log.Println("webserver")
-	//log.Println(reply)
+	go connStateTracker(recordConn, s.queryConns, s.queryConnsReply)
 
 	log.Println("Listening on 3000...")
 	http.ListenAndServe(":3000", r)
