@@ -51,8 +51,8 @@ var ContainerControl = React.createClass({
         <Table striped bordered condensed hover>
           <thead>
             <tr>
-              <th>Listener</th>
-              <th>Actions</th>
+              <th width="50%">Listener</th>
+              <th width="50%">Actions</th>
             </tr>
           </thead>
           <tbody>

@@ -90,6 +90,20 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(tpProxy); err != nil {
 		log.Printf("failed to write tp proxy info: %v\n", err)
 	}
+
+	for i, containerProxy := range containerProxies {
+		if containerProxy.Name == arg.Container {
+			containerProxy.Proxies = append(containerProxy.Proxies, *tpProxy)
+			containerProxies[i] = containerProxy
+			log.Printf("Proxies updated: %+v", containerProxies)
+			return
+		}
+	}
+
+	containerProxies = append(containerProxies, containerProxyInfo{
+		Name:    arg.Container,
+		Proxies: []toxiproxy.Proxy{*tpProxy},
+	})
 }
 
 type Conn struct {
@@ -111,7 +125,7 @@ type Server struct {
 	dc              dockerclient.Client
 }
 
-func (s *Server) connsHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
 	s.queryConns <- true
 	reply := <-s.queryConnsReply
 	//log.Println("webserver")
@@ -216,7 +230,7 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/api/proxy", s.addProxyHandler).Methods("POST")
 	r.HandleFunc("/api/proxies", getProxiesHandler).Methods("GET")
-	r.HandleFunc("/api/conns", s.connsHandler).Methods("GET")
+	r.HandleFunc("/api/conns", s.getConnsHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
 
 	// set up the channels for the gorouties
