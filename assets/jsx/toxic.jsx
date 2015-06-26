@@ -76,35 +76,43 @@ var ProxyRow = React.createClass({
       // updating: false,
       // removing: false,
     };
-    if (this.props.rule) {
-      state.upstream = this.props.rule.upstream;
-      if (this.props.rule.upstream_toxics) {
-        state.upstreamLatency = this.props.rule.upstream_toxics.latency ? this.props.rule.upstream_toxics.latency.latency : 0;
-        state.upstreamBandwidth = this.props.rule.upstream_toxics.bandwidth ? this.props.rule.upstream_toxics.bandwidth.rate : null;
-       }
-      if (this.props.rule.downstream_toxics) {
-        state.downstreamLatency = this.props.rule.downstream_toxics.latency ? this.props.rule.downstream_toxics.latency.latency : 0;
-        state.downstreamBandwidth = this.props.rule.downstream_toxics.bandwidth ? this.props.rule.downstream_toxics.bandwidth.rate : null;
-      }
-    }
+    var rule = this.props.rule || {};
+    state.address = rule.upstream;
+    var upstream = rule.upstream_toxics || {};
+    state.upstream = {};
+    state.upstream.latency = $.extend({}, upstream.latency);
+    state.upstream.bandwidth = $.extend({}, upstream.bandwidth);
+    var downstream = rule.downstream_toxics || {};
+    state.downstream = {};
+    state.downstream.latency = $.extend({}, downstream.latency);
+    state.downstream.bandwidth = $.extend({}, downstream.bandwidth);
     return state;
   },
   propertyUpdateHandler: function(property) {
     var self = this;
     return function(event) {
-      var state = {modified: true};
-      state[property] = event.target.value;
+      var newVal = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+      var state = $.extend(self.state, {modified: true});
+      var parts = property.split(".");
+      var currProp = state;
+      for (var i=0; i < parts.length - 1; i++) {
+        if (!currProp[parts[i]]) {
+          currProp[parts[i]] = {};
+        }
+        currProp = currProp[parts[i]];
+      }
+      currProp[parts[parts.length - 1]] = newVal;
       self.setState(state);
     };
   },
   handleAdd: function() {
     var self = this;
     this.setState({adding: true});
-    addProxy(this.props.container.name, this.state.upstream, function(proxy) {
-      addToxic(proxy.name, "latency", true, {enabled: true, latency: parseInt(self.state.upstreamLatency), jitter: 5});
-      addToxic(proxy.name, "latency", false, {enabled: true, latency: parseInt(self.state.downstreamLatency), jitter: 5});
-      addToxic(proxy.name, "bandwidth", true, {enabled: parseInt(self.state.upstreamBandwidth) > 0, rate: parseInt(self.state.upstreamBandwidth)});
-      addToxic(proxy.name, "bandwidth", false, {enabled: parseInt(self.state.downstreamBandwidth) > 0, rate: parseInt(self.state.downstreamBandwidth)});
+    addProxy(this.props.container.name, this.state.address, function(proxy) {
+      addToxic(proxy.name, "latency", true, {enabled: self.state.upstream.latency.enabled, latency: parseInt(self.state.upstream.latency.latency), jitter: 5});
+      addToxic(proxy.name, "latency", false, {enabled: self.state.downstream.latency.enabled, latency: parseInt(self.state.downstream.latency.latency), jitter: 5});
+      addToxic(proxy.name, "bandwidth", true, {enabled: self.state.upstream.bandwidth.enabled, rate: parseInt(self.state.upstream.bandwidth.rate)});
+      addToxic(proxy.name, "bandwidth", false, {enabled: self.state.downstream.bandwidth.enabled, rate: parseInt(self.state.downstream.bandwidth.rate)});
       self.replaceState(self.getInitialState());
       self.props.reload();
     });
@@ -114,11 +122,12 @@ var ProxyRow = React.createClass({
     this.setState({updating: true});
     // Just a remove/add...
     deleteProxy(this.props.rule.name, function() {
-      addProxy(self.props.container.name, self.state.upstream, function(proxy) {
-        addToxic(proxy.name, "latency", true, {enabled: true, latency: parseInt(self.state.upstreamLatency), jitter: 5});
-        addToxic(proxy.name, "latency", false, {enabled: true, latency: parseInt(self.state.downstreamLatency), jitter: 5});
-        addToxic(proxy.name, "bandwidth", true, {enabled: parseInt(self.state.upstreamBandwidth) > 0, rate: parseInt(self.state.upstreamBandwidth)});
-        addToxic(proxy.name, "bandwidth", false, {enabled: parseInt(self.state.downstreamBandwidth) > 0, rate: parseInt(self.state.downstreamBandwidth)});
+      addProxy(self.props.container.name, self.state.address, function(proxy) {
+        addToxic(proxy.name, "latency", true, {enabled: self.state.upstream.latency.enabled, latency: parseInt(self.state.upstream.latency.latency), jitter: 5});
+        addToxic(proxy.name, "latency", false, {enabled: self.state.downstream.latency.enabled, latency: parseInt(self.state.downstream.latency.latency), jitter: 5});
+        addToxic(proxy.name, "bandwidth", true, {enabled: self.state.upstream.bandwidth.enabled, rate: parseInt(self.state.upstream.bandwidth.rate)});
+        addToxic(proxy.name, "bandwidth", false, {enabled: self.state.downstream.bandwidth.enabled, rate: parseInt(self.state.downstream.bandwidth.rate)});
+        self.setState({updating: false});
         self.props.reload();
       });
     });
@@ -155,14 +164,30 @@ var ProxyRow = React.createClass({
       </Button>;
     return (
       <tr>
-        <td><Input type="text" value={this.state.upstream} onChange={this.propertyUpdateHandler("upstream")} /></td>
+        <td><Input type="text" value={this.state.address} onChange={this.propertyUpdateHandler("address")} /></td>
         <td><ListGroup fill>
-          <ListGroupItem><Input type="text" label="Latency" value={this.state.upstreamLatency} onChange={this.propertyUpdateHandler("upstreamLatency")} /></ListGroupItem>
-          <ListGroupItem><Input type="text" label="Bandwidth" value={this.state.upstreamBandwidth} onChange={this.propertyUpdateHandler("upstreamBandwidth")} /></ListGroupItem>
+          <ListGroupItem>
+            <Input type="text" label="Latency" value={this.state.upstream.latency.latency} onChange={this.propertyUpdateHandler("upstream.latency.latency")}
+              addonBefore={<input type="checkbox" checked={this.state.upstream.latency.enabled} onChange={this.propertyUpdateHandler("upstream.latency.enabled")} />}
+            />
+          </ListGroupItem>
+          <ListGroupItem>
+            <Input type="text" label="Bandwidth" value={this.state.upstream.bandwidth.rate} onChange={this.propertyUpdateHandler("upstream.bandwidth.rate")}
+              addonBefore={<input type="checkbox" checked={this.state.upstream.bandwidth.enabled} onChange={this.propertyUpdateHandler("upstream.bandwidth.enabled")} />}
+            />
+          </ListGroupItem>
         </ListGroup></td>
         <td><ListGroup fill>
-          <ListGroupItem><Input type="text" label="Latency" value={this.state.downstreamLatency} onChange={this.propertyUpdateHandler("downstreamLatency")} /></ListGroupItem>
-          <ListGroupItem><Input type="text" label="Bandwidth" value={this.state.downstreamBandwidth} onChange={this.propertyUpdateHandler("downstreamBandwidth")} /></ListGroupItem>
+          <ListGroupItem>
+            <Input type="text" label="Latency" value={this.state.downstream.latency.latency} onChange={this.propertyUpdateHandler("downstream.latency.latency")}
+              addonBefore={<input type="checkbox" checked={this.state.downstream.latency.enabled} onChange={this.propertyUpdateHandler("downstream.latency.enabled")} />}
+            />
+          </ListGroupItem>
+          <ListGroupItem>
+            <Input type="text" label="Bandwidth" value={this.state.downstream.bandwidth.rate} onChange={this.propertyUpdateHandler("downstream.bandwidth.rate")}
+              addonBefore={<input type="checkbox" checked={this.state.downstream.bandwidth.enabled} onChange={this.propertyUpdateHandler("downstream.bandwidth.enabled")} />}
+            />
+          </ListGroupItem>
         </ListGroup></td>
         <td>
           {buttons}
