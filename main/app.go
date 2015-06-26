@@ -44,7 +44,7 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	s.nextTpPort++
 
 	tpProxy := s.tp.NewProxy(&toxiproxy.Proxy{
-		Name:     fmt.Sprintf("%s;%s:%d", arg.Container, arg.IPAddress, arg.Port),
+		Name:     fmt.Sprintf("%s;%s:%d;%s", arg.Container, arg.IPAddress, arg.Port, containerIP),
 		Listen:   fmt.Sprintf("%s:%d", s.tpIP, newTpPort),
 		Upstream: fmt.Sprintf("%s:%d", arg.IPAddress, arg.Port),
 		Enabled:  true,
@@ -67,7 +67,7 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("successfully ran iptables command %q\n", iptablesCmdString)
-	s.tpProxies[tpProxy.Name] = tpProxy
+	s.tpProxies[tpProxy.Name] = ProxyInfo{containerIP, arg.IPAddress, arg.Port, s.tpIP, newTpPort, tpProxy}
 
 	if err := json.NewEncoder(w).Encode(tpProxy); err != nil {
 		log.Printf("failed to write tp proxy info: %v\n", err)
@@ -85,7 +85,9 @@ func (s *Server) deleteProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if tpProxy, ok := s.tpProxies[arg.Name]; !ok {
+	tpProxyInfo, ok := s.tpProxies[arg.Name];
+	tpProxy := tpProxyInfo.proxy
+	if !ok {
 		http.Error(w, "invalid proxy name", http.StatusBadRequest)
 		log.Println("proxy doesn't exist")
 		return
@@ -94,6 +96,18 @@ func (s *Server) deleteProxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "can't delete tp proxy", http.StatusInternalServerError)
 		return
 	}
+
+	iptablesCmdString := fmt.Sprintf("iptables -t nat -D PREROUTING -s %s -p tcp -d %s --dport %d -j DNAT --to-destination %s:%d", tpProxyInfo.srcIp, tpProxyInfo.dstIp, tpProxyInfo.dstPort, tpProxyInfo.proxyIP, tpProxyInfo.proxyPort)
+	iptablesCmdSlice := strings.Split(iptablesCmdString, " ")
+	iptablesCmd := exec.Command(iptablesCmdSlice[0], iptablesCmdSlice[1:]...)
+	iptablesCmd.Stdout = os.Stdout
+	iptablesCmd.Stderr = os.Stderr
+	if err := iptablesCmd.Run(); err != nil {
+		log.Printf("failed to run iptables command: %v\n", err)
+		http.Error(w, "can't iptables", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("successfully ran iptables command %q\n", iptablesCmdString)
 
 	delete(s.tpProxies, arg.Name)
 }
@@ -112,7 +126,8 @@ func (s *Server) createToxicHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proxyName := mux.Vars(r)["proxyName"]
-	proxy, ok := s.tpProxies[proxyName]
+	proxyInfo, ok := s.tpProxies[proxyName]
+	proxy := proxyInfo.proxy
 	if !ok {
 		http.Error(w, "no such proxy", http.StatusBadRequest)
 		log.Println("no such proxy")
@@ -159,6 +174,15 @@ type ConnCache struct {
 	last_seen time.Time
 }
 
+type ProxyInfo struct {
+	srcIp string
+	dstIp string
+	dstPort uint16
+	proxyIP string
+	proxyPort uint16
+	proxy *toxiproxy.Proxy
+}
+
 type Server struct {
 	nextTpPort      uint16
 	queryConns      chan bool
@@ -166,7 +190,7 @@ type Server struct {
 	tp              *toxiproxy.Client
 	tpIP            string
 	dc              dockerclient.Client
-	tpProxies       map[string]*toxiproxy.Proxy
+	tpProxies       map[string]ProxyInfo
 }
 
 func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
@@ -178,8 +202,8 @@ func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type containerProxyInfo struct {
-	Name    string             `json:"name"`
-	Proxies []*toxiproxy.Proxy `json:"proxies"`
+	Name    string               `json:"name"`
+	Proxies []*toxiproxy.Proxy   `json:"proxies"`
 }
 type containerProxyInfos []containerProxyInfo
 
@@ -210,11 +234,12 @@ func (s *Server) getProxiesHandler(w http.ResponseWriter, r *http.Request) {
 
 	for name, proxy := range s.tpProxies {
 		containerName := strings.Split(name, ";")[0]
-		containerProxyMap[containerName] = append(containerProxyMap[containerName], proxy)
+		containerProxyMap[containerName] = append(containerProxyMap[containerName], proxy.proxy)
 	}
 
 	var containerProxies containerProxyInfos
 	for containerName, proxies := range containerProxyMap {
+		log.Println(proxies)
 		containerProxies = append(containerProxies, containerProxyInfo{
 			Name:    containerName,
 			Proxies: proxies,
@@ -303,10 +328,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to list toxiproxy proxies: %v", err)
 	}
+	proxyInfos := map[string]ProxyInfo{}
 
 	firstAvailablePort := uint16(9000)
-	for _, proxy := range proxies {
-		if tpPort, err := strconv.ParseInt(strings.Split(proxy.Listen, ":")[1], 10, 16); err != nil {
+	for proxyName, proxy := range proxies {
+		tpPort, err := strconv.ParseUint(strings.Split(proxy.Listen, ":")[1], 10, 16)
+		if err != nil {
 			log.Printf("unable to parse port from proxy.Listen=%s\n", proxy.Listen)
 			continue
 		} else if uint16(tpPort) >= firstAvailablePort {
@@ -314,6 +341,20 @@ func main() {
 			firstAvailablePort = uint16(tpPort) + 1
 		} else {
 			log.Printf("port %d is taken, nobody cares\n", tpPort)
+		}
+
+		// hacky extraction of data from the container name
+		dstPort, err := strconv.ParseUint(strings.Split(strings.Split(proxyName, ";")[1], ":")[1], 10, 16)
+		if err == nil {
+			proxyInfos[proxyName] = ProxyInfo{
+					strings.Split(proxyName, ";")[2],
+					strings.Split(strings.Split(proxyName, ";")[1], ":")[0],
+					uint16(dstPort),
+					tpIP,
+					uint16(tpPort),
+					proxy}
+		} else {
+			log.Println("failed to parse toxyproxy proxy name")
 		}
 	}
 
@@ -324,7 +365,7 @@ func main() {
 		tp:              tp,
 		tpIP:            tpIP,
 		dc:              dc,
-		tpProxies:       proxies,
+		tpProxies:       proxyInfos,
 	}
 
 	r := mux.NewRouter()
