@@ -19,18 +19,32 @@ var ToxicControls = React.createClass({
       }
     });
   },
+  reloadConns: function() {
+    var self = this;
+    $.ajax({
+      url: "/api/conns",
+      dataType: "json",
+      success: function(data) {
+        self.setState({conns: data});
+      },
+      error: function(xhr, status, err) {
+        window.console.error(status, err.toString());
+      }
+    });
+  },
   getInitialState: function() {
-    return {};
+    return {conns: []};
   },
   componentDidMount: function() {
     this.reloadData();
+	this.interval = setInterval(this.reloadConns.bind(this), 1000);
   },
   render: function() {
     var containers = this.state.containers || [];
     var containerControls = [];
     for (var i=0; i < containers.length; i++) {
       var c = containers[i];
-      containerControls.push(<ContainerControl key={i} container={c} reload={this.reloadData}/>);
+      containerControls.push(<ContainerControl key={i} container={c} reload={this.reloadData} conns={this.state.conns}/>);
     }
     return (
       <div>
@@ -40,6 +54,30 @@ var ToxicControls = React.createClass({
   }
 });
 
+var SuggestionRow = React.createClass({
+  getInitialState: function() {
+    return {};
+  },
+  handleAdd: function() {
+    var self = this;
+    this.setState({adding: true});
+    addProxy(this.props.container.name, this.props.conn, function(proxy) {
+      addToxic(proxy.name, "latency", true, {enabled: false, latency: 0, jitter: 5});
+      addToxic(proxy.name, "latency", false, {enabled: false, latency: 0, jitter: 5});
+      addToxic(proxy.name, "bandwidth", true, {enabled: false, rate: 0});
+      addToxic(proxy.name, "bandwidth", false, {enabled: false, rate: 0});
+    });
+	this.props.reload();
+  },
+  render: function() {
+  	  var conn = this.props.conn;
+	  return <tr><td colSpan="3">{conn}</td><td><Button
+        bsStyle="success"
+        onClick={this.handleAdd}>Add
+      </Button></td></tr>;
+  }
+})
+
 var ContainerControl = React.createClass({
   render: function() {
     var rows = [];
@@ -48,6 +86,21 @@ var ContainerControl = React.createClass({
       rows.push(<ProxyRow key={proxies[i].name} container={this.props.container} rule={proxies[i]} reload={this.props.reload} />);
     }
     rows.push(<ProxyRow key="_" container={this.props.container} reload={this.props.reload} />);
+
+	var ip = this.props.container.Ip;
+	var conns = {};
+	for (var i = 0; i < this.props.conns.length; i++) {
+		var conn = this.props.conns[i];
+		if (conn.SrcIp == ip) {
+			var target = conn.DstIp + ':' + conn.DstPort;
+			conns[target] = target;
+		}
+	}
+	var suggestions = [];
+	for (var conn in conns) {
+		suggestions.push(<SuggestionRow conn={conn} container={this.props.container} reload={this.props.reload}/>);
+	}
+
     return (
       <Panel collapsible defaultExpanded header={this.props.container.name}>
         <Table fill striped bordered condensed hover>
@@ -61,6 +114,7 @@ var ContainerControl = React.createClass({
           </thead>
           <tbody>
             {rows}
+			{suggestions}
           </tbody>
         </Table>
       </Panel>

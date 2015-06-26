@@ -218,6 +218,7 @@ func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
 type containerProxyInfo struct {
 	Name    string               `json:"name"`
 	Proxies []*toxiproxy.Proxy   `json:"proxies"`
+	Ip      string
 }
 type containerProxyInfos []containerProxyInfo
 
@@ -253,10 +254,14 @@ func (s *Server) getProxiesHandler(w http.ResponseWriter, r *http.Request) {
 
 	var containerProxies containerProxyInfos
 	for containerName, proxies := range containerProxyMap {
-		log.Println(proxies)
+		containerInfo, err := s.dc.InspectContainer(containerName)
+		if err != nil {
+			log.Printf("failed to get container ip %s\n", err)
+		}
 		containerProxies = append(containerProxies, containerProxyInfo{
 			Name:    containerName,
 			Proxies: proxies,
+			Ip:      containerInfo.NetworkSettings.IPAddress,
 		})
 	}
 	sort.Sort(containerProxies)
