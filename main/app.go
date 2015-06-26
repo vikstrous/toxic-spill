@@ -121,10 +121,16 @@ func (s *Server) createToxicHandler(w http.ResponseWriter, r *http.Request) {
 	if arg.Upstream {
 		direction = "upstream"
 	}
-	if _, err := proxy.SetToxic(arg.ToxicName, direction, arg.Toxic); err != nil {
+	if toxic, err := proxy.SetToxic(arg.ToxicName, direction, arg.Toxic); err != nil {
 		http.Error(w, "failed to create toxic", http.StatusInternalServerError)
 		log.Printf("failed to create toxic: %v\n", err)
 		return
+	} else {
+		if arg.Upstream {
+			proxy.ToxicsUpstream[arg.ToxicName] = toxic
+		} else {
+			proxy.ToxicsDownstream[arg.ToxicName] = toxic
+		}
 	}
 }
 
