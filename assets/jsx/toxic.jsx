@@ -112,10 +112,15 @@ var ProxyRow = React.createClass({
   handleUpdate: function() {
     var self = this;
     this.setState({updating: true});
-    // Not yet defined
-    updateProxyRule(this.props.rule.name, this.state.upstream, function() {
-      self.setState({updating: false});
-      self.props.reload();
+    // Just a remove/add...
+    deleteProxy(this.props.rule.name, function() {
+      addProxy(self.props.container.name, self.state.upstream, function(proxy) {
+        addToxic(proxy.name, "latency", true, {enabled: true, latency: parseInt(self.state.upstreamLatency), jitter: 5});
+        addToxic(proxy.name, "latency", false, {enabled: true, latency: parseInt(self.state.downstreamLatency), jitter: 5});
+        addToxic(proxy.name, "bandwidth", true, {enabled: parseInt(self.state.upstreamBandwidth) > 0, rate: parseInt(self.state.upstreamBandwidth)});
+        addToxic(proxy.name, "bandwidth", false, {enabled: parseInt(self.state.downstreamBandwidth) > 0, rate: parseInt(self.state.downstreamBandwidth)});
+        self.props.reload();
+      });
     });
   },
   handleRemove: function() {
@@ -128,20 +133,20 @@ var ProxyRow = React.createClass({
   },
   render: function() {
     var submitting = this.state.updating || this.state.removing || this.state.adding;
-    var buttons = this.props.rule ?
-      // <Button
-      //   bsStyle="warning"
-      //   disabled={submitting}
-      //   onClick={!submitting ? this.handleUpdate : null}>
-      //   {!this.state.updating ? "Update" : "Updating..."}
-      // </Button>,
-      <Button
+    var buttons = this.props.rule ? [
+      <Button key="update"
+        bsStyle="warning"
+        disabled={submitting}
+        onClick={!submitting ? this.handleUpdate : null}>
+        {!this.state.updating ? "Update" : "Updating..."}
+      </Button>,
+      <Button key="remove"
         bsStyle="danger"
         disabled={submitting}
         onClick={!submitting ? this.handleRemove : null}>
         {!this.state.removing ? "Remove" : "Removing..."}
       </Button>
-       :
+      ] :
       <Button
         bsStyle="success"
         disabled={this.state.adding}
