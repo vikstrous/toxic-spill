@@ -103,8 +103,8 @@ var ProxyRow = React.createClass({
     addProxy(this.props.container.name, this.state.upstream, function(proxy) {
       addToxic(proxy.name, "latency", true, {enabled: true, latency: parseInt(self.state.upstreamLatency), jitter: 5});
       addToxic(proxy.name, "latency", false, {enabled: true, latency: parseInt(self.state.downstreamLatency), jitter: 5});
-      addToxic(proxy.name, "bandwidth", true, {enabled: true, rate: parseInt(self.state.upstreamBandwidth)});
-      addToxic(proxy.name, "bandwidth", false, {enabled: true, rate: parseInt(self.state.downstreamBandwidth)});
+      addToxic(proxy.name, "bandwidth", true, {enabled: parseInt(self.state.upstreamBandwidth) > 0, rate: parseInt(self.state.upstreamBandwidth)});
+      addToxic(proxy.name, "bandwidth", false, {enabled: parseInt(self.state.downstreamBandwidth) > 0, rate: parseInt(self.state.downstreamBandwidth)});
       self.replaceState(self.getInitialState());
       self.props.reload();
     });
