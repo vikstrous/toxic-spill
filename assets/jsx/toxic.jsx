@@ -89,9 +89,12 @@ var ProxyRow = React.createClass({
     });
   },
   handleRemove: function() {
-    this.setState({updating: true});
-    // Not yet defined
-    deleteProxyRule(this.props.rule.name);
+    var self = this;
+    this.setState({removing: true});
+    deleteProxyRule(this.props.rule.name, function() {
+      self.setState({removing: false});
+      self.props.reload();
+    });
   },
   render: function() {
     var submitting = this.state.updating || this.state.removing;
@@ -160,10 +163,22 @@ function addProxyRule(containerName, upstream, callback) {
   var ip = upstreamParts[0];
   var port = upstreamParts[1];
   $.ajax({
-    url: "/api/proxy",
+    url: "/api/proxies",
     method: "POST",
     contentType: "application/json",
     data: JSON.stringify({container: containerName, ipAddress: ip, port: parseInt(port)}),
+    complete: function() {
+      callback();
+    }
+  });
+}
+
+function deleteProxyRule(name, callback) {
+  $.ajax({
+    url: "/api/proxies",
+    method: "DELETE",
+    contentType: "application/json",
+    data: JSON.stringify({name: name}),
     complete: function() {
       callback();
     }

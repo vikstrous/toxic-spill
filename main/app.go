@@ -73,6 +73,30 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) deleteProxyHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	var arg struct {
+		Name string
+	}
+	if err := json.NewDecoder(r.Body).Decode(&arg); err != nil {
+		http.Error(w, "malformed request body", http.StatusBadRequest)
+		log.Println("bad request")
+		return
+	}
+
+	if tpProxy, ok := s.tpProxies[arg.Name]; !ok {
+		http.Error(w, "invalid proxy name", http.StatusBadRequest)
+		log.Println("proxy doesn't exist")
+		return
+	} else if err := tpProxy.Delete(); err != nil {
+		log.Printf("can't delete tp proxy: %v\n", err)
+		http.Error(w, "can't delete tp proxy", http.StatusInternalServerError)
+		return
+	}
+
+	delete(s.tpProxies, arg.Name)
+}
+
 type Conn struct {
 	SrcIp   string
 	SrcPort string
@@ -103,6 +127,17 @@ func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) getProxiesHandler(w http.ResponseWriter, r *http.Request) {
 	containerProxyMap := make(map[string][]*toxiproxy.Proxy)
+
+	containers, err := s.dc.ListContainers(false, false, "")
+	if err != nil {
+		http.Error(w, "failed to load container list", http.StatusInternalServerError)
+		log.Println("failed to load container list")
+	}
+
+	for _, container := range containers {
+		containerProxyMap[canonicalName(container)] = []*toxiproxy.Proxy{}
+	}
+
 	for name, proxy := range s.tpProxies {
 		containerName := strings.Split(name, "&")[0]
 		containerProxyMap[containerName] = append(containerProxyMap[containerName], proxy)
@@ -217,6 +252,7 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/api/proxies", s.addProxyHandler).Methods("POST")
 	r.HandleFunc("/api/proxies", s.getProxiesHandler).Methods("GET")
+	r.HandleFunc("/api/proxies", s.deleteProxyHandler).Methods("DELETE")
 	r.HandleFunc("/api/conns", s.getConnsHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
 
@@ -253,4 +289,16 @@ func findNewTpPort() uint64 {
 	newPort := firstAvailablePort
 	firstAvailablePort++
 	return newPort
+}
+
+func canonicalName(c dockerclient.Container) string {
+	name := c.Names[0]
+	for _, n := range c.Names {
+		parts := strings.Split(n, "/")
+		lastPart := parts[len(parts)-1]
+		if len(lastPart) < len(name) {
+			name = lastPart
+		}
+	}
+	return name
 }
