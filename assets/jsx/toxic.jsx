@@ -45,14 +45,16 @@ var ContainerControl = React.createClass({
     for (var i=0; i < proxies.length; i++) {
       rows.push(<ProxyRow container={this.props.container} rule={proxies[i]} reload={this.props.reload} />);
     }
-    rows.push(<AddProxyRow container={this.props.container} reload={this.props.reload} />);
+    rows.push(<ProxyRow container={this.props.container} reload={this.props.reload} />);
     return (
       <Panel collapsible defaultExpanded header={this.props.container.name}>
         <Table striped bordered condensed hover>
           <thead>
             <tr>
-              <th width="50%">Listener</th>
-              <th width="50%">Actions</th>
+              <th width="25%">Listener</th>
+              <th width="30%">Upstream</th>
+              <th width="30%">Downstream</th>
+              <th width="15%">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -68,15 +70,24 @@ var ProxyRow = React.createClass({
   getInitialState: function() {
     return {
       modified: false,
+      adding: false,
       updating: false,
       removing: false,
-      upstream: this.props.rule.upstream,
+      upstream: this.props.rule ? this.props.rule.upstream : "",
     };
   },
   handleUpstreamChange: function(event) {
     this.setState({
       modified: true,
       upstream: event.target.value
+    });
+  },
+  handleAdd: function() {
+    var self = this;
+    this.setState({adding: true});
+    addProxyRule(this.props.container.name, this.state.upstream, function() {
+      self.setState({adding: false});
+      self.props.reload();
     });
   },
   handleUpdate: function() {
@@ -97,60 +108,35 @@ var ProxyRow = React.createClass({
     });
   },
   render: function() {
-    var submitting = this.state.updating || this.state.removing;
+    var submitting = this.state.updating || this.state.removing || this.state.adding;
+    var buttons = this.props.rule ? [
+      <Button
+        bsStyle="warning"
+        disabled={submitting}
+        onClick={!submitting ? this.handleUpdate : null}>
+        {!this.state.updating ? "Update" : "Updating..."}
+      </Button>,
+      <Button
+        bsStyle="danger"
+        disabled={submitting}
+        onClick={!submitting ? this.handleRemove : null}>
+        {!this.state.removing ? "Remove" : "Removing..."}
+      </Button>
+      ] :
+      <Button
+        bsStyle="success"
+        disabled={this.state.adding}
+        onClick={!this.state.adding ? this.handleAdd :null}>
+          {!this.state.adding ? "Add" : "Adding..."}
+      </Button>;
     return (
       <tr>
         <td><Input type="text" value={this.state.upstream} onChange={this.handleUpstreamChange} /></td>
+        <td></td>
+        <td></td>
         <td>
-          <Button
-            bsStyle="warning"
-            disabled={submitting}
-            onClick={!submitting ? this.handleUpdate : null}>
-            {!this.state.updating ? "Update" : "Updating..."}
-          </Button>
-          <Button
-            bsStyle="danger"
-            disabled={submitting}
-            onClick={!submitting ? this.handleRemove : null}>
-            {!this.state.removing ? "Remove" : "Removing..."}
-          </Button>
+          {buttons}
         </td>
-      </tr>
-    );
-  }
-});
-
-var AddProxyRow = React.createClass({
-  getInitialState: function() {
-    return {
-      adding: false,
-      upstream: "",
-    };
-  },
-  handleUpstreamChange: function(event) {
-    this.setState({
-      modified: true,
-      upstream: event.target.value
-    });
-  },
-  handleAdd: function() {
-    var self = this;
-    this.setState({adding: true});
-    addProxyRule(this.props.container.name, this.state.upstream, function() {
-      self.setState({adding: false});
-      self.props.reload();
-    });
-  },
-  render: function() {
-    return (
-      <tr>
-        <td><Input type="text" value={this.state.upstream} onChange={this.handleUpstreamChange} /></td>
-        <td><Button
-          bsStyle="success"
-          disabled={this.state.adding}
-          onClick={!this.state.adding ? this.handleAdd :null}>
-            {!this.state.adding ? "Add" : "Adding..."}
-        </Button></td>
       </tr>
     );
   }
