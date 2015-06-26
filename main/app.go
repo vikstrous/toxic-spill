@@ -25,11 +25,11 @@ type containerProxyInfo struct {
 
 var containerProxies = []containerProxyInfo{
 	{
-		Name: "backstabbing_sinoussi",
+		Name: "toxiproxy",
 		Proxies: []toxiproxy.Proxy{
 			{
 				Name:     "derp",
-				Upstream: "google.com:80",
+				Upstream: "192.168.0.0:80",
 			},
 		},
 	},

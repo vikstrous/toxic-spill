@@ -4,10 +4,7 @@ var Panel = ReactBootstrap.Panel;
 var Button = ReactBootstrap.Button;
 
 var ToxicControls = React.createClass({
-  getInitialState: function() {
-    return {};
-  },
-  componentDidMount: function() {
+  reloadData: function() {
     var self = this;
     $.ajax({
       url: "/api/proxies",
@@ -20,12 +17,18 @@ var ToxicControls = React.createClass({
       }
     });
   },
+  getInitialState: function() {
+    return {};
+  },
+  componentDidMount: function() {
+    this.reloadData();
+  },
   render: function() {
     var containers = this.state.containers || [];
     var containerControls = [];
     for (var i=0; i < containers.length; i++) {
       var c = containers[i];
-      containerControls.push(<ContainerControl key={i} container={c}/>);
+      containerControls.push(<ContainerControl key={i} container={c} reload={this.reloadData}/>);
     }
     return (
       <div>
@@ -40,9 +43,9 @@ var ContainerControl = React.createClass({
     var rows = [];
     var proxies = this.props.container.proxies || [];
     for (var i=0; i < proxies.length; i++) {
-      rows.push(<ProxyRow rule={proxies[i]}/>);
+      rows.push(<ProxyRow container={this.props.container} rule={proxies[i]} reload={this.props.reload} />);
     }
-    rows.push(<AddProxyRow />);
+    rows.push(<AddProxyRow container={this.props.container} reload={this.props.reload} />);
     return (
       <Panel collapsible defaultExpanded header={this.props.container.name}>
         <Table striped bordered condensed hover>
@@ -77,10 +80,12 @@ var ProxyRow = React.createClass({
     });
   },
   handleUpdate: function() {
+    var self = this;
     this.setState({updating: true});
     // Not yet defined
     updateProxyRule(this.props.rule.name, this.state.upstream, function() {
-      this.setState({updating: false});
+      self.setState({updating: false});
+      self.props.reload();
     });
   },
   handleRemove: function() {
@@ -113,17 +118,59 @@ var ProxyRow = React.createClass({
 });
 
 var AddProxyRow = React.createClass({
+  getInitialState: function() {
+    return {
+      adding: false,
+      upstream: "",
+    };
+  },
+  handleUpstreamChange: function(event) {
+    this.setState({
+      modified: true,
+      upstream: event.target.value
+    });
+  },
+  handleAdd: function() {
+    var self = this;
+    this.setState({adding: true});
+    addProxyRule(this.props.container.name, this.state.upstream, function() {
+      self.setState({adding: false});
+      self.props.reload();
+    });
+  },
   render: function() {
     return (
       <tr>
-        <td><Input type="text" /></td>
-        <td><Button bsStyle="success">Add</Button></td>
+        <td><Input type="text" value={this.state.upstream} onChange={this.handleUpstreamChange} /></td>
+        <td><Button
+          bsStyle="success"
+          disabled={this.state.adding}
+          onClick={!this.state.adding ? this.handleAdd :null}>
+            {!this.state.adding ? "Add" : "Adding..."}
+        </Button></td>
       </tr>
     );
   }
 });
 
+var controls = <ToxicControls />;
+
+function addProxyRule(containerName, upstream, callback) {
+  var upstreamParts = upstream.split(":");
+  var ip = upstreamParts[0];
+  var port = upstreamParts[1];
+  $.ajax({
+    url: "/api/proxy",
+    method: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({container: containerName, ipAddress: ip, port: parseInt(port)}),
+    complete: function() {
+      callback();
+    }
+  });
+}
+
 React.render(
-  <ToxicControls />,
+  controls,
   document.getElementById("content")
 );
