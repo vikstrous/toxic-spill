@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,8 +16,6 @@ import (
 	"github.com/donhcd/dockerclient"
 	"github.com/gorilla/mux"
 )
-
-var firstAvailablePort uint64 = 9000
 
 func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
@@ -40,7 +39,8 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 		containerIP = containerInfo.NetworkSettings.IPAddress
 	}
 
-	newTpPort := findNewTpPort()
+	newTpPort := s.nextTpPort
+	s.nextTpPort++
 
 	tpProxy := s.tp.NewProxy(&toxiproxy.Proxy{
 		Name:     fmt.Sprintf("%s;%s:%d", arg.Container, arg.IPAddress, arg.Port),
@@ -146,6 +146,7 @@ type ConnCache struct {
 }
 
 type Server struct {
+	nextTpPort      uint16
 	queryConns      chan bool
 	queryConnsReply chan []Conn
 	tp              *toxiproxy.Client
@@ -273,17 +274,25 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to list toxiproxy proxies: %v", err)
 	}
-	fmt.Printf("existing proxies: %v\n", proxies)
 
-	fs := FileServer(http.Dir("assets"))
+	firstAvailablePort := uint16(9000)
+	for proxyName := range proxies {
+		if tpPort, err := strconv.ParseInt(strings.Split(proxyName, ":")[1], 10, 16); err != nil {
+			log.Printf("unable to parse port from proxyName %s\n", proxyName)
+			continue
+		} else if uint16(tpPort) >= firstAvailablePort {
+			firstAvailablePort = uint16(tpPort) + 1
+		}
+	}
 
 	s := Server{
+		nextTpPort:      firstAvailablePort,
 		queryConns:      make(chan bool),
 		queryConnsReply: make(chan []Conn),
 		tp:              tp,
 		tpIP:            tpIP,
 		dc:              dc,
-		tpProxies:       make(map[string]*toxiproxy.Proxy),
+		tpProxies:       proxies,
 	}
 
 	r := mux.NewRouter()
@@ -292,6 +301,7 @@ func main() {
 	r.HandleFunc("/api/proxies", s.deleteProxyHandler).Methods("DELETE")
 	r.HandleFunc("/api/proxies/{proxyName}/toxics", s.createToxicHandler).Methods("POST")
 	r.HandleFunc("/api/conns", s.getConnsHandler).Methods("GET")
+	fs := FileServer(http.Dir("assets"))
 	r.PathPrefix("/").Handler(fs)
 
 	// set up the channels for the gorouties
@@ -321,12 +331,6 @@ func getTpHost(dc dockerclient.Client) string {
 	}
 	log.Fatal("couldn't find a running toxiproxy")
 	return ""
-}
-
-func findNewTpPort() uint64 {
-	newPort := firstAvailablePort
-	firstAvailablePort++
-	return newPort
 }
 
 func canonicalName(c dockerclient.Container) string {
