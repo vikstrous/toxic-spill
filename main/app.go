@@ -282,12 +282,15 @@ func main() {
 	}
 
 	firstAvailablePort := uint16(9000)
-	for proxyName := range proxies {
-		if tpPort, err := strconv.ParseInt(strings.Split(proxyName, ":")[1], 10, 16); err != nil {
-			log.Printf("unable to parse port from proxyName %s\n", proxyName)
+	for _, proxy := range proxies {
+		if tpPort, err := strconv.ParseInt(strings.Split(proxy.Listen, ":")[1], 10, 16); err != nil {
+			log.Printf("unable to parse port from proxy.Listen=%s\n", proxy.Listen)
 			continue
 		} else if uint16(tpPort) >= firstAvailablePort {
+			log.Printf("port %d is taken, increasing firstAvailablePort=%d->%d\n", tpPort, firstAvailablePort, tpPort+1)
 			firstAvailablePort = uint16(tpPort) + 1
+		} else {
+			log.Printf("port %d is taken, nobody cares\n", tpPort)
 		}
 	}
 
