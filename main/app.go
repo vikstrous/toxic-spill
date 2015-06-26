@@ -18,26 +18,6 @@ import (
 
 var firstAvailablePort uint64 = 9000
 
-type containerProxyInfo struct {
-	Name    string            `json:"name"`
-	Proxies []toxiproxy.Proxy `json:"proxies"`
-}
-
-var containerProxies = []containerProxyInfo{
-	{
-		Name: "toxiproxy",
-		Proxies: []toxiproxy.Proxy{
-			{
-				Name:     "derp",
-				Upstream: "192.168.0.0:80",
-			},
-		},
-	},
-	{
-		Name: "gloomy_pasteur",
-	},
-}
-
 func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var arg struct {
@@ -63,7 +43,7 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	newTpPort := findNewTpPort()
 
 	tpProxy := s.tp.NewProxy(&toxiproxy.Proxy{
-		Name:     fmt.Sprintf("%s_%s_%d", arg.Container, arg.IPAddress, arg.Port),
+		Name:     fmt.Sprintf("%s&%s:%d", arg.Container, arg.IPAddress, arg.Port),
 		Listen:   fmt.Sprintf("%s:%d", s.tpIP, newTpPort),
 		Upstream: fmt.Sprintf("%s:%d", arg.IPAddress, arg.Port),
 		Enabled:  true,
@@ -82,28 +62,15 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	if err := iptablesCmd.Run(); err != nil {
 		log.Printf("failed to run iptables command: %v\n", err)
 		http.Error(w, "can't iptables", http.StatusInternalServerError)
+		tpProxy.Delete()
 		return
 	}
 	log.Printf("successfully ran iptables command %q\n", iptablesCmdString)
+	s.tpProxies[tpProxy.Name] = tpProxy
 
-	// TODO add proxy to list of proxies
 	if err := json.NewEncoder(w).Encode(tpProxy); err != nil {
 		log.Printf("failed to write tp proxy info: %v\n", err)
 	}
-
-	for i, containerProxy := range containerProxies {
-		if containerProxy.Name == arg.Container {
-			containerProxy.Proxies = append(containerProxy.Proxies, *tpProxy)
-			containerProxies[i] = containerProxy
-			log.Printf("Proxies updated: %+v", containerProxies)
-			return
-		}
-	}
-
-	containerProxies = append(containerProxies, containerProxyInfo{
-		Name:    arg.Container,
-		Proxies: []toxiproxy.Proxy{*tpProxy},
-	})
 }
 
 type Conn struct {
@@ -123,6 +90,7 @@ type Server struct {
 	tp              *toxiproxy.Client
 	tpIP            string
 	dc              dockerclient.Client
+	tpProxies       map[string]*toxiproxy.Proxy
 }
 
 func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +101,25 @@ func (s *Server) getConnsHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(reply)
 }
 
-func getProxiesHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getProxiesHandler(w http.ResponseWriter, r *http.Request) {
+	containerProxyMap := make(map[string][]*toxiproxy.Proxy)
+	for name, proxy := range s.tpProxies {
+		containerName := strings.Split(name, "&")[0]
+		containerProxyMap[containerName] = append(containerProxyMap[containerName], proxy)
+	}
+
+	type containerProxyInfo struct {
+		Name    string             `json:"name"`
+		Proxies []*toxiproxy.Proxy `json:"proxies"`
+	}
+	var containerProxies []containerProxyInfo
+	for containerName, proxies := range containerProxyMap {
+		containerProxies = append(containerProxies, containerProxyInfo{
+			Name:    containerName,
+			Proxies: proxies,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(containerProxies)
 }
@@ -225,11 +211,12 @@ func main() {
 		tp:              tp,
 		tpIP:            tpIP,
 		dc:              dc,
+		tpProxies:       make(map[string]*toxiproxy.Proxy),
 	}
 
 	r := mux.NewRouter()
 	r.HandleFunc("/api/proxy", s.addProxyHandler).Methods("POST")
-	r.HandleFunc("/api/proxies", getProxiesHandler).Methods("GET")
+	r.HandleFunc("/api/proxies", s.getProxiesHandler).Methods("GET")
 	r.HandleFunc("/api/conns", s.getConnsHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
 
