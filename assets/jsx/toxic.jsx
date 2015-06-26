@@ -13,7 +13,7 @@ var ToxicControls = React.createClass({
       url: "/api/proxies",
       dataType: "json",
       success: function(data) {
-        self.setState(data);
+        self.setState({containers: data});
       },
       error: function(xhr, status, err) {
         window.console.error(status, err.toString());
@@ -38,8 +38,9 @@ var ToxicControls = React.createClass({
 var ContainerControl = React.createClass({
   render: function() {
     var rows = [];
-    for (var i=0; i < this.props.container.proxyRules.length; i++) {
-      rows.push(<ProxyRow rule={this.props.container.proxyRules[i]}/>);
+    var proxies = this.props.container.proxies || [];
+    for (var i=0; i < proxies.length; i++) {
+      rows.push(<ProxyRow rule={proxies[i]}/>);
     }
     rows.push(<AddProxyRow />);
     return (
@@ -47,8 +48,7 @@ var ContainerControl = React.createClass({
         <Table striped bordered condensed hover>
           <thead>
             <tr>
-              <th>Address</th>
-              <th>Port</th>
+              <th>Listener</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -67,38 +67,32 @@ var ProxyRow = React.createClass({
       modified: false,
       updating: false,
       removing: false,
-      address: this.props.rule.address,
-      port: this.props.rule.port,
+      upstream: this.props.rule.upstream,
     };
   },
-  handleAddressChange: function(event) {
+  handleUpstreamChange: function(event) {
     this.setState({
       modified: true,
-      address: event.target.value
-    });
-  },
-  handlePortChange: function(event) {
-    this.setState({
-      modified: true,
-      port: event.target.value
+      upstream: event.target.value
     });
   },
   handleUpdate: function() {
     this.setState({updating: true});
-    updateProxyRule(this.props.rule.id, this.state.address, this.state.port, function() {
+    // Not yet defined
+    updateProxyRule(this.props.rule.name, this.state.upstream, function() {
       this.setState({updating: false});
     });
   },
   handleRemove: function() {
     this.setState({updating: true});
-    deleteProxyRule(this.props.rule.id);
+    // Not yet defined
+    deleteProxyRule(this.props.rule.name);
   },
   render: function() {
     var submitting = this.state.updating || this.state.removing;
     return (
       <tr>
-        <td><Input type="text" value={this.state.address} onChange={this.handleAddressChange} /></td>
-        <td><Input type="text" value={this.state.port} onChange={this.handlePortChange} /></td>
+        <td><Input type="text" value={this.state.upstream} onChange={this.handleUpstreamChange} /></td>
         <td>
           <Button
             bsStyle="warning"
@@ -122,7 +116,6 @@ var AddProxyRow = React.createClass({
   render: function() {
     return (
       <tr>
-        <td><Input type="text" /></td>
         <td><Input type="text" /></td>
         <td><Button bsStyle="success">Add</Button></td>
       </tr>

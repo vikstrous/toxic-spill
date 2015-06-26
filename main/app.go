@@ -20,14 +20,25 @@ var tp *toxiproxy.Client
 var tpIP string
 var dc dockerclient.Client
 var firstAvailablePort uint64 = 9000
-var containerProxies = map[string][]toxiproxy.Proxy{
-	"backstabbing_sinoussi": {
-		{
-			Name:     "derp",
-			Upstream: "google.com:80",
+
+type containerProxyInfo struct {
+	Name    string            `json:"name"`
+	Proxies []toxiproxy.Proxy `json:"proxies"`
+}
+
+var containerProxies = []containerProxyInfo{
+	{
+		Name: "backstabbing_sinoussi",
+		Proxies: []toxiproxy.Proxy{
+			{
+				Name:     "derp",
+				Upstream: "google.com:80",
+			},
 		},
 	},
-	"gloomy_pasteur": nil,
+	{
+		Name: "gloomy_pasteur",
+	},
 }
 
 func addProxyHandler(w http.ResponseWriter, r *http.Request) {
