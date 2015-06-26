@@ -80,9 +80,11 @@ var ProxyRow = React.createClass({
       state.upstream = this.props.rule.upstream;
       if (this.props.rule.upstream_toxics) {
         state.upstreamLatency = this.props.rule.upstream_toxics.latency ? this.props.rule.upstream_toxics.latency.latency : 0;
-      }
+        state.upstreamBandwidth = this.props.rule.upstream_toxics.bandwidth ? this.props.rule.upstream_toxics.bandwidth.rate : null;
+       }
       if (this.props.rule.downstream_toxics) {
         state.downstreamLatency = this.props.rule.downstream_toxics.latency ? this.props.rule.downstream_toxics.latency.latency : 0;
+        state.downstreamBandwidth = this.props.rule.downstream_toxics.bandwidth ? this.props.rule.downstream_toxics.bandwidth.rate : null;
       }
     }
     return state;
@@ -101,6 +103,8 @@ var ProxyRow = React.createClass({
     addProxy(this.props.container.name, this.state.upstream, function(proxy) {
       addToxic(proxy.name, "latency", true, {enabled: true, latency: parseInt(self.state.upstreamLatency), jitter: 5});
       addToxic(proxy.name, "latency", false, {enabled: true, latency: parseInt(self.state.downstreamLatency), jitter: 5});
+      addToxic(proxy.name, "bandwidth", true, {enabled: parseInt(self.state.upstreamBandwidth), rate: parseInt(self.state.upstreamBandwidth)});
+      addToxic(proxy.name, "bandwidth", false, {enabled: parseInt(self.state.downstreamBandwidth), rate: parseInt(self.state.downstreamBandwidth)});
       self.replaceState(self.getInitialState());
       self.props.reload();
     });
@@ -148,10 +152,12 @@ var ProxyRow = React.createClass({
       <tr>
         <td><Input type="text" value={this.state.upstream} onChange={this.propertyUpdateHandler("upstream")} /></td>
         <td><ListGroup fill>
-            <ListGroupItem><Input type="text" label="Latency" value={this.state.upstreamLatency} onChange={this.propertyUpdateHandler("upstreamLatency")} /></ListGroupItem>
+          <ListGroupItem><Input type="text" label="Latency" value={this.state.upstreamLatency} onChange={this.propertyUpdateHandler("upstreamLatency")} /></ListGroupItem>
+          <ListGroupItem><Input type="text" label="Bandwidth" value={this.state.upstreamBandwidth} onChange={this.propertyUpdateHandler("upstreamBandwidth")} /></ListGroupItem>
         </ListGroup></td>
         <td><ListGroup fill>
-            <ListGroupItem><Input type="text" label="Latency" value={this.state.downstreamLatency} onChange={this.propertyUpdateHandler("downstreamLatency")} /></ListGroupItem>
+          <ListGroupItem><Input type="text" label="Latency" value={this.state.downstreamLatency} onChange={this.propertyUpdateHandler("downstreamLatency")} /></ListGroupItem>
+          <ListGroupItem><Input type="text" label="Bandwidth" value={this.state.downstreamBandwidth} onChange={this.propertyUpdateHandler("downstreamBandwidth")} /></ListGroupItem>
         </ListGroup></td>
         <td>
           {buttons}
