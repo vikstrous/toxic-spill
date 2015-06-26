@@ -258,7 +258,7 @@ func getActiveConns() []Conn {
 		return nil
 	}
 
-	results := []Conn{}
+	results := make(map[Conn]interface{})
 
 	re := regexp.MustCompile("(\\d+(\\.\\d+){3}):(\\d+)")
 	conns := strings.Split(fmt.Sprintf("%s", iftop_out), "\n--------------------------------------------------------------------------------------------\n")[1]
@@ -272,9 +272,13 @@ func getActiveConns() []Conn {
 		ip_port_src := re.FindStringSubmatch(conns_arr[i+1])
 		conn := Conn{ip_port_src[1], ip_port_src[3], ip_port_dst[1], ip_port_dst[3]}
 		//log.Printf("%s connecting to %s on port %s", conn.src_ip, conn.dst_ip, conn.dst_port)
-		results = append(results, conn)
+		results[conn] = struct{}{}
 	}
-	return results
+	resultsSlice := []Conn{}
+	for conn := range results {
+		resultsSlice = append(resultsSlice, conn)
+	}
+	return resultsSlice
 }
 
 func connPoller(c chan Conn) {
