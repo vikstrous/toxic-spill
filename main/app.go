@@ -16,9 +16,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-var tp *toxiproxy.Client
-var tpIP string
-var dc dockerclient.Client
 var firstAvailablePort uint64 = 9000
 
 type containerProxyInfo struct {
@@ -41,7 +38,7 @@ var containerProxies = []containerProxyInfo{
 	},
 }
 
-func addProxyHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var arg struct {
 		Container string
@@ -55,7 +52,7 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var containerIP string
-	if containerInfo, err := dc.InspectContainer(arg.Container); err != nil {
+	if containerInfo, err := s.dc.InspectContainer(arg.Container); err != nil {
 		log.Printf("can't talk to docker\n")
 		http.Error(w, "can't talk to docker", http.StatusInternalServerError)
 		return
@@ -65,9 +62,9 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	newTpPort := findNewTpPort()
 
-	tpProxy := tp.NewProxy(&toxiproxy.Proxy{
+	tpProxy := s.tp.NewProxy(&toxiproxy.Proxy{
 		Name:     fmt.Sprintf("%s_%s_%d", arg.Container, arg.IPAddress, arg.Port),
-		Listen:   fmt.Sprintf("%s:%d", tpIP, newTpPort),
+		Listen:   fmt.Sprintf("%s:%d", s.tpIP, newTpPort),
 		Upstream: fmt.Sprintf("%s:%d", arg.IPAddress, arg.Port),
 		Enabled:  true,
 	})
@@ -77,7 +74,7 @@ func addProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	iptablesCmdString := fmt.Sprintf("iptables -t nat -I PREROUTING 1 -s %s -p tcp -d %s --dport %d -j DNAT --to-destination %s:%d", containerIP, arg.IPAddress, arg.Port, tpIP, newTpPort)
+	iptablesCmdString := fmt.Sprintf("iptables -t nat -I PREROUTING 1 -s %s -p tcp -d %s --dport %d -j DNAT --to-destination %s:%d", containerIP, arg.IPAddress, arg.Port, s.tpIP, newTpPort)
 	iptablesCmdSlice := strings.Split(iptablesCmdString, " ")
 	iptablesCmd := exec.Command(iptablesCmdSlice[0], iptablesCmdSlice[1:]...)
 	iptablesCmd.Stdout = os.Stdout
@@ -107,8 +104,11 @@ type ConnCache struct {
 }
 
 type Server struct {
-	queryConns chan bool
+	queryConns      chan bool
 	queryConnsReply chan []Conn
+	tp              *toxiproxy.Client
+	tpIP            string
+	dc              dockerclient.Client
 }
 
 func (s *Server) connsHandler(w http.ResponseWriter, r *http.Request) {
@@ -190,13 +190,12 @@ func connStateTracker(c chan Conn, query chan bool, reply chan []Conn) {
 }
 
 func main() {
-	var err error
-	dc, err = dockerclient.NewDockerClient("unix:///var/run/docker.sock", nil)
+	dc, err := dockerclient.NewDockerClient("unix:///var/run/docker.sock", nil)
 	if err != nil {
 		log.Fatalf("Failed to init dockerclient: %v", err)
 	}
-	tpIP = getTpHost(dc)
-	tp = toxiproxy.NewClient("http://" + tpIP + ":8474")
+	tpIP := getTpHost(dc)
+	tp := toxiproxy.NewClient("http://" + tpIP + ":8474")
 
 	proxies, err := tp.Proxies()
 	if err != nil {
@@ -206,10 +205,16 @@ func main() {
 
 	fs := FileServer(http.Dir("assets"))
 
-	s := Server{make(chan bool), make(chan []Conn)}
+	s := Server{
+		queryConns:      make(chan bool),
+		queryConnsReply: make(chan []Conn),
+		tp:              tp,
+		tpIP:            tpIP,
+		dc:              dc,
+	}
 
 	r := mux.NewRouter()
-	r.HandleFunc("/api/proxy", addProxyHandler).Methods("POST")
+	r.HandleFunc("/api/proxy", s.addProxyHandler).Methods("POST")
 	r.HandleFunc("/api/proxies", getProxiesHandler).Methods("GET")
 	r.HandleFunc("/api/conns", s.connsHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
