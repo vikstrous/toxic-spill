@@ -97,6 +97,32 @@ func (s *Server) deleteProxyHandler(w http.ResponseWriter, r *http.Request) {
 	delete(s.tpProxies, arg.Name)
 }
 
+func (s *Server) createToxicHandler(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	var arg struct {
+		ToxicName string // latency, down, bandwidth, slow_close, timeout
+		Upstream  bool
+		Toxic     map[string]interface{} // https://github.com/Shopify/toxiproxy#toxics
+	}
+	if err := json.NewDecoder(r.Body).Decode(&arg); err != nil {
+		http.Error(w, "malformed request body", http.StatusBadRequest)
+		log.Printf("bad request\n")
+		return
+	}
+
+	proxyName := mux.Vars(r)["proxyName"]
+	proxy := s.tpProxies[proxyName]
+	direction := "downstream"
+	if arg.Upstream {
+		direction = "upstream"
+	}
+	if toxic, err := proxy.SetToxic(arg.ToxicName, direction, arg.Toxic); err != nil {
+		http.Error(w, "failed to create toxic", http.StatusInternalServerError)
+		log.Printf("failed to create toxic: %v\n", err)
+		return
+	}
+}
+
 type Conn struct {
 	SrcIp   string
 	SrcPort string
@@ -253,6 +279,7 @@ func main() {
 	r.HandleFunc("/api/proxies", s.addProxyHandler).Methods("POST")
 	r.HandleFunc("/api/proxies", s.getProxiesHandler).Methods("GET")
 	r.HandleFunc("/api/proxies", s.deleteProxyHandler).Methods("DELETE")
+	r.HandleFunc("/api/proxies/{proxyName}/toxics", s.createToxicHandler).Methods("POST")
 	r.HandleFunc("/api/conns", s.getConnsHandler).Methods("GET")
 	r.PathPrefix("/").Handler(fs)
 
