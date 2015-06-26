@@ -169,6 +169,20 @@ type Conn struct {
 	DstIp   string
 	DstPort string
 }
+type Conns []Conn
+
+func (c Conns) Len() int {
+	return len(c)
+}
+
+func (c Conns) Less(i, j int) bool {
+	return c[i].DstIp+c[i].DstPort < c[j].DstIp+c[j].DstPort
+}
+
+func (c Conns) Swap(i, j int) {
+	c[i], c[j] = c[j], c[i]
+}
+
 type ConnCache struct {
 	conn      Conn
 	last_seen time.Time
@@ -274,10 +288,11 @@ func getActiveConns() []Conn {
 		//log.Printf("%s connecting to %s on port %s", conn.src_ip, conn.dst_ip, conn.dst_port)
 		results[conn] = struct{}{}
 	}
-	resultsSlice := []Conn{}
+	resultsSlice := Conns{}
 	for conn := range results {
 		resultsSlice = append(resultsSlice, conn)
 	}
+	sort.Sort(resultsSlice)
 	return resultsSlice
 }
 
