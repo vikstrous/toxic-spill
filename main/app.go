@@ -43,7 +43,7 @@ func (s *Server) addProxyHandler(w http.ResponseWriter, r *http.Request) {
 	newTpPort := findNewTpPort()
 
 	tpProxy := s.tp.NewProxy(&toxiproxy.Proxy{
-		Name:     fmt.Sprintf("%s&%s:%d", arg.Container, arg.IPAddress, arg.Port),
+		Name:     fmt.Sprintf("%s;%s:%d", arg.Container, arg.IPAddress, arg.Port),
 		Listen:   fmt.Sprintf("%s:%d", s.tpIP, newTpPort),
 		Upstream: fmt.Sprintf("%s:%d", arg.IPAddress, arg.Port),
 		Enabled:  true,
@@ -106,17 +106,22 @@ func (s *Server) createToxicHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&arg); err != nil {
 		http.Error(w, "malformed request body", http.StatusBadRequest)
-		log.Printf("bad request\n")
+		log.Println("bad request")
 		return
 	}
 
 	proxyName := mux.Vars(r)["proxyName"]
-	proxy := s.tpProxies[proxyName]
+	proxy, ok := s.tpProxies[proxyName]
+	if !ok {
+		http.Error(w, "no such proxy", http.StatusBadRequest)
+		log.Println("no such proxy")
+		return
+	}
 	direction := "downstream"
 	if arg.Upstream {
 		direction = "upstream"
 	}
-	if toxic, err := proxy.SetToxic(arg.ToxicName, direction, arg.Toxic); err != nil {
+	if _, err := proxy.SetToxic(arg.ToxicName, direction, arg.Toxic); err != nil {
 		http.Error(w, "failed to create toxic", http.StatusInternalServerError)
 		log.Printf("failed to create toxic: %v\n", err)
 		return
@@ -165,7 +170,7 @@ func (s *Server) getProxiesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for name, proxy := range s.tpProxies {
-		containerName := strings.Split(name, "&")[0]
+		containerName := strings.Split(name, ";")[0]
 		containerProxyMap[containerName] = append(containerProxyMap[containerName], proxy)
 	}
 

@@ -52,8 +52,8 @@ var ContainerControl = React.createClass({
           <thead>
             <tr>
               <th width="25%">Listener</th>
-              <th width="30%">Upstream</th>
-              <th width="30%">Downstream</th>
+              <th width="30%">Upstream Latency</th>
+              <th width="30%">Downstream Latency</th>
               <th width="15%">Actions</th>
             </tr>
           </thead>
@@ -68,13 +68,22 @@ var ContainerControl = React.createClass({
 
 var ProxyRow = React.createClass({
   getInitialState: function() {
-    return {
-      modified: false,
-      adding: false,
-      updating: false,
-      removing: false,
-      upstream: this.props.rule ? this.props.rule.upstream : "",
+    var state = {
+      // modified: false,
+      // adding: false,
+      // updating: false,
+      // removing: false,
     };
+    if (this.props.rule) {
+      state.upstream = this.props.rule.upstream;
+      if (this.props.rule.upstream_toxics) {
+        state.upstreamLatency = this.props.rule.upstream_toxics.latency ? this.props.rule.upstream_toxics.latency.latency : 0;
+      }
+      if (this.props.rule.downstream_toxics) {
+        state.downstreamLatency = this.props.rule.downstream_toxics.latency ? this.props.rule.downstream_toxics.latency.latency : 0;
+      }
+    }
+    return state;
   },
   handleUpstreamChange: function(event) {
     this.setState({
@@ -82,10 +91,24 @@ var ProxyRow = React.createClass({
       upstream: event.target.value
     });
   },
+  handleUpstreamLatencyChange: function(event) {
+    this.setState({
+      modified: true,
+      upstreamLatency: event.target.value
+    });
+  },
+  handleDownstreamLatencyChange: function(event) {
+    this.setState({
+      modified: true,
+      downstreamLatency: event.target.value
+    });
+  },
   handleAdd: function() {
     var self = this;
     this.setState({adding: true});
-    addProxyRule(this.props.container.name, this.state.upstream, function() {
+    addProxy(this.props.container.name, this.state.upstream, function(proxy) {
+      addToxic(proxy.name, "latency", true, {enabled: true, latency: parseInt(self.state.upstreamLatency), jitter: 5});
+      addToxic(proxy.name, "latency", false, {enabled: true, latency: parseInt(self.state.downstreamLatency), jitter: 5});
       self.setState({adding: false});
       self.props.reload();
     });
@@ -102,7 +125,7 @@ var ProxyRow = React.createClass({
   handleRemove: function() {
     var self = this;
     this.setState({removing: true});
-    deleteProxyRule(this.props.rule.name, function() {
+    deleteProxy(this.props.rule.name, function() {
       self.setState({removing: false});
       self.props.reload();
     });
@@ -110,12 +133,12 @@ var ProxyRow = React.createClass({
   render: function() {
     var submitting = this.state.updating || this.state.removing || this.state.adding;
     var buttons = this.props.rule ? [
-      <Button
-        bsStyle="warning"
-        disabled={submitting}
-        onClick={!submitting ? this.handleUpdate : null}>
-        {!this.state.updating ? "Update" : "Updating..."}
-      </Button>,
+      // <Button
+      //   bsStyle="warning"
+      //   disabled={submitting}
+      //   onClick={!submitting ? this.handleUpdate : null}>
+      //   {!this.state.updating ? "Update" : "Updating..."}
+      // </Button>,
       <Button
         bsStyle="danger"
         disabled={submitting}
@@ -132,8 +155,8 @@ var ProxyRow = React.createClass({
     return (
       <tr>
         <td><Input type="text" value={this.state.upstream} onChange={this.handleUpstreamChange} /></td>
-        <td></td>
-        <td></td>
+        <td><Input type="text" value={this.state.upstreamLatency} onChange={this.handleUpstreamLatencyChange} /></td>
+        <td><Input type="text" value={this.state.downstreamLatency} onChange={this.handleDownstreamLatencyChange} /></td>
         <td>
           {buttons}
         </td>
@@ -144,7 +167,7 @@ var ProxyRow = React.createClass({
 
 var controls = <ToxicControls />;
 
-function addProxyRule(containerName, upstream, callback) {
+function addProxy(containerName, upstream, callback) {
   var upstreamParts = upstream.split(":");
   var ip = upstreamParts[0];
   var port = upstreamParts[1];
@@ -152,21 +175,45 @@ function addProxyRule(containerName, upstream, callback) {
     url: "/api/proxies",
     method: "POST",
     contentType: "application/json",
+    dataType: "json",
     data: JSON.stringify({container: containerName, ipAddress: ip, port: parseInt(port)}),
-    complete: function() {
-      callback();
+    success: function(data) {
+      if (callback) {
+        callback(data);
+      }
+    },
+    error: function() {
+      if (callback) {
+        callback();
+      }
     }
   });
 }
 
-function deleteProxyRule(name, callback) {
+function deleteProxy(name, callback) {
   $.ajax({
     url: "/api/proxies",
     method: "DELETE",
     contentType: "application/json",
     data: JSON.stringify({name: name}),
     complete: function() {
-      callback();
+      if (callback) {
+        callback();
+      }
+    }
+  });
+}
+
+function addToxic(proxyName, toxicName, isUpstream, data, callback) {
+  $.ajax({
+    url: "/api/proxies/" + proxyName + "/toxics",
+    method: "POST",
+    contentType: "application/json",
+    data: JSON.stringify({toxicName: toxicName, upstream: isUpstream, toxic: data}),
+    complete: function() {
+      if (callback) {
+        callback();
+      }
     }
   });
 }
