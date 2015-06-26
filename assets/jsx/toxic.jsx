@@ -181,13 +181,13 @@ function addProxy(containerName, upstream, callback) {
   }
   var upstreamParts = upstream.split(":");
   var ip = upstreamParts[0];
-  var port = upstreamParts[1];
+  var port = parseInt(upstreamParts[1]) || 80;
   $.ajax({
     url: "/api/proxies",
     method: "POST",
     contentType: "application/json",
     dataType: "json",
-    data: JSON.stringify({container: containerName, ipAddress: ip, port: parseInt(port)}),
+    data: JSON.stringify({container: containerName, ipAddress: ip, port: port}),
     success: function(data) {
       if (callback) {
         callback(data);
